@@ -20,8 +20,16 @@
         <Menu Grid.Row="0">
             <MenuItem Header="_File">
                 <MenuItem Header="_Open..." Click="OpenMenuItem_Click" />
+                <MenuItem Header="Open _Recent" x:Name="RecentFilesMenu" SubmenuOpened="RecentFilesMenu_SubmenuOpened" />
                 <Separator />
                 <MenuItem Header="E_xit" Click="ExitMenuItem_Click" />
+            </MenuItem>
+            <MenuItem Header="_View">
+                <MenuItem Header="_Dark Mode" x:Name="DarkModeMenuItem" IsCheckable="True" Click="DarkModeMenuItem_Click" />
+                <Separator />
+                <MenuItem Header="Zoom _In" Click="ZoomInMenuItem_Click" />
+                <MenuItem Header="Zoom _Out" Click="ZoomOutMenuItem_Click" />
+                <MenuItem Header="Zoom _Reset" Click="ZoomResetMenuItem_Click" />
             </MenuItem>
         </Menu>
 

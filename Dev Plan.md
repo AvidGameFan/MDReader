@@ -67,27 +67,19 @@ Section 7 — Packaging
 MSIX packaging.
 File association in installer.
 Optional auto-update.
+Consider cross-platform support
 
 Checklist (Remaining)
 
-- [] Add recent files list
-- []  Add basic error handling
-- []  Add theme toggle
-- []  Add zoom controls
-- []  Optional: live reload on file change
-- []  Optional: search in document
-- []  Optional: table of contents
-- []  Later: split view editor
-- []  Later: WYSIWYG editor in WebView2
-- []  Later: save + conflict handling
-- []  Package with MSIX Add recent files list
-- []  Add basic error handling
-- []  Add theme toggle
-- []  Add zoom controls
-- []  Optional: live reload on file change
-- []  Optional: search in document
-- []  Optional: table of contents
-- []  Later: split view editor
-- []  Later: WYSIWYG editor in WebView2
-- []  Later: save + conflict handling
-- []  Package with MSIX
+- [x] Add recent files list
+- [x] Add basic error handling
+- [x] Add theme toggle
+- [x] Add zoom controls
+- [ ] Optional: live reload on file change
+- [ ] Optional: search in document
+- [ ] Optional: table of contents
+- [ ] Later: split view editor
+- [ ] Later: WYSIWYG editor in WebView2
+- [ ] Later: save + conflict handling
+- [ ] Package with MSIX
+- [ ] Cross-platform/ARM64 and Linux builds
