@@ -51,9 +51,9 @@ Zoom in/out.
 
 Section 5 — Optional Viewer Enhancements
 
-Live reload on file change.
-Search in document.
-Table of contents.
+- Live reload on file change.
+- Search in document.
+- Table of contents.
 
 Section 6 — WYSIWYG (later)
 
@@ -68,6 +68,7 @@ MSIX packaging.
 File association in installer.
 Optional auto-update.
 Consider cross-platform support
+Testing
 
 Checklist (Remaining)
 
@@ -75,9 +76,9 @@ Checklist (Remaining)
 - [x] Add basic error handling
 - [x] Add theme toggle
 - [x] Add zoom controls
-- [ ] Optional: live reload on file change
-- [ ] Optional: search in document
-- [ ] Optional: table of contents
+- [x] Optional: live reload on file change
+- [x] Optional: search in document
+- [x] Optional: table of contents
 - [ ] Later: split view editor
 - [ ] Later: WYSIWYG editor in WebView2
 - [ ] Later: save + conflict handling

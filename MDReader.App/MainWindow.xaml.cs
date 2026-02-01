@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Threading;
 using Markdig;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Win32;
@@ -29,7 +30,12 @@ public partial class MainWindow : Window
     private string? _currentFilePath;
     private string? _currentMarkdown;
     private bool _isDarkTheme;
+    private bool _showToc = true;
+    private bool _liveReloadEnabled = true;
     private double _zoomFactor = 1.0;
+    private FileSystemWatcher? _fileWatcher;
+    private DispatcherTimer? _reloadTimer;
+    private string? _pendingReloadPath;
 
     public MainWindow()
         : this(null)
@@ -49,6 +55,8 @@ public partial class MainWindow : Window
         LoadRecentFiles();
         RefreshRecentFilesMenu();
         ApplyZoom();
+        LiveReloadMenuItem.IsChecked = _liveReloadEnabled;
+        TocMenuItem.IsChecked = _showToc;
 
         if (!string.IsNullOrWhiteSpace(_initialFilePath))
         {
@@ -85,6 +93,7 @@ public partial class MainWindow : Window
             Title = $"MDReader — {Path.GetFileName(filePath)}";
             SetStatus(filePath);
             AddRecentFile(filePath);
+            SetupFileWatcher(filePath);
         }
         catch (Exception ex)
         {
@@ -101,6 +110,35 @@ public partial class MainWindow : Window
         var themeStyles = _isDarkTheme
             ? "body { background: #1e1e1e; color: #e6e6e6; } a { color: #4ea1ff; } code, pre { background: #2d2d2d; }"
             : "body { background: #ffffff; color: #1b1b1b; } a { color: #0067c0; } code, pre { background: #f5f5f5; }";
+                var tocHtml = _showToc ? "<nav id=\"toc\"><strong>Contents</strong></nav>" : string.Empty;
+                var tocScript = @"
+<script>
+(function() {
+    const toc = document.getElementById('toc');
+    if (!toc) return;
+    const headings = document.querySelectorAll('h1, h2, h3');
+    if (!headings.length) { toc.style.display = 'none'; return; }
+
+    const slugify = (text) => text.toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .trim()
+        .replace(/\s+/g, '-')
+        .substring(0, 80);
+
+    const list = document.createElement('ul');
+    headings.forEach(h => {
+        if (!h.id) { h.id = slugify(h.textContent || ''); }
+        const li = document.createElement('li');
+        li.className = 'toc-' + h.tagName.toLowerCase();
+        const a = document.createElement('a');
+        a.textContent = h.textContent || '';
+        a.href = '#' + h.id;
+        li.appendChild(a);
+        list.appendChild(li);
+    });
+    toc.appendChild(list);
+})();
+</script>";
 
         var html = $@"<!doctype html>
 <html>
@@ -112,11 +150,18 @@ public partial class MainWindow : Window
     code, pre {{ font-family: Consolas, 'Cascadia Code', monospace; }}
     pre {{ padding: 12px; overflow-x: auto; }}
     img {{ max-width: 100%; }}
+        #toc {{ padding: 12px 16px; margin-bottom: 16px; border: 1px solid #ddd; border-radius: 6px; }}
+        #toc ul {{ margin: 8px 0 0 16px; padding: 0; }}
+        #toc li {{ margin: 4px 0; }}
+        #toc .toc-h2 {{ margin-left: 12px; }}
+        #toc .toc-h3 {{ margin-left: 24px; }}
     {themeStyles}
   </style>
 </head>
 <body>
+{tocHtml}
 {htmlBody}
+{tocScript}
 </body>
 </html>";
 
@@ -231,6 +276,71 @@ public partial class MainWindow : Window
         {
             ShowWelcomePage();
         }
+    }
+
+    private void LiveReloadMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        _liveReloadEnabled = LiveReloadMenuItem.IsChecked;
+        if (_liveReloadEnabled && !string.IsNullOrWhiteSpace(_currentFilePath))
+        {
+            SetupFileWatcher(_currentFilePath);
+        }
+        else
+        {
+            _fileWatcher?.Dispose();
+            _fileWatcher = null;
+        }
+    }
+
+    private void TocMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        _showToc = TocMenuItem.IsChecked;
+        if (!string.IsNullOrWhiteSpace(_currentMarkdown))
+        {
+            RenderMarkdown(_currentMarkdown);
+        }
+        else
+        {
+            ShowWelcomePage();
+        }
+    }
+
+    private void FindMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        SearchTextBox.Focus();
+        SearchTextBox.SelectAll();
+    }
+
+    private async void FindButton_Click(object sender, RoutedEventArgs e)
+    {
+        await FindInPageAsync();
+    }
+
+    private async void SearchTextBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            await FindInPageAsync();
+            e.Handled = true;
+        }
+    }
+
+    private async Task FindInPageAsync()
+    {
+        if (MarkdownView.CoreWebView2 == null)
+        {
+            return;
+        }
+
+        var query = SearchTextBox.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            SetStatus("Enter text to search.");
+            return;
+        }
+
+        var script = $"window.find({JsonSerializer.Serialize(query)})";
+        await MarkdownView.CoreWebView2.ExecuteScriptAsync(script);
     }
 
     private void ZoomInMenuItem_Click(object sender, RoutedEventArgs e)
@@ -353,6 +463,67 @@ public partial class MainWindow : Window
         catch
         {
             // Ignore recent files save errors
+        }
+    }
+
+    private void SetupFileWatcher(string filePath)
+    {
+        _fileWatcher?.Dispose();
+        _fileWatcher = null;
+
+        if (!_liveReloadEnabled)
+        {
+            return;
+        }
+
+        var directory = Path.GetDirectoryName(filePath);
+        var fileName = Path.GetFileName(filePath);
+        if (string.IsNullOrWhiteSpace(directory) || string.IsNullOrWhiteSpace(fileName))
+        {
+            return;
+        }
+
+        _fileWatcher = new FileSystemWatcher(directory, fileName)
+        {
+            NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName
+        };
+
+        _fileWatcher.Changed += OnWatchedFileChanged;
+        _fileWatcher.Renamed += OnWatchedFileChanged;
+        _fileWatcher.EnableRaisingEvents = true;
+
+        _reloadTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+        _reloadTimer.Tick -= ReloadTimer_Tick;
+        _reloadTimer.Tick += ReloadTimer_Tick;
+    }
+
+    private void OnWatchedFileChanged(object sender, FileSystemEventArgs e)
+    {
+        _pendingReloadPath = _currentFilePath;
+        Dispatcher.Invoke(() =>
+        {
+            _reloadTimer?.Stop();
+            _reloadTimer?.Start();
+        });
+    }
+
+    private async void ReloadTimer_Tick(object? sender, EventArgs e)
+    {
+        _reloadTimer?.Stop();
+
+        if (!string.IsNullOrWhiteSpace(_pendingReloadPath))
+        {
+            await LoadMarkdownFileAsync(_pendingReloadPath);
+        }
+    }
+
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.F && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            SearchTextBox.Focus();
+            SearchTextBox.SelectAll();
+            e.Handled = true;
         }
     }
 

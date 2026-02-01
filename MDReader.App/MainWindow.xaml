@@ -9,7 +9,8 @@
         Title="MDReader" Height="700" Width="1000"
         AllowDrop="True"
         DragOver="Window_DragOver"
-        Drop="Window_Drop">
+        Drop="Window_Drop"
+        PreviewKeyDown="Window_PreviewKeyDown">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -26,6 +27,10 @@
             </MenuItem>
             <MenuItem Header="_View">
                 <MenuItem Header="_Dark Mode" x:Name="DarkModeMenuItem" IsCheckable="True" Click="DarkModeMenuItem_Click" />
+                <MenuItem Header="_Live Reload" x:Name="LiveReloadMenuItem" IsCheckable="True" Click="LiveReloadMenuItem_Click" />
+                <MenuItem Header="Toggle _TOC" x:Name="TocMenuItem" IsCheckable="True" Click="TocMenuItem_Click" />
+                <Separator />
+                <MenuItem Header="_Find..." Click="FindMenuItem_Click" InputGestureText="Ctrl+F" />
                 <Separator />
                 <MenuItem Header="Zoom _In" Click="ZoomInMenuItem_Click" />
                 <MenuItem Header="Zoom _Out" Click="ZoomOutMenuItem_Click" />
@@ -37,7 +42,16 @@
                      Grid.Row="1" />
 
         <StatusBar Grid.Row="2">
-            <TextBlock x:Name="StatusText" Text="Ready" />
+            <StatusBarItem HorizontalAlignment="Stretch">
+                <DockPanel LastChildFill="True">
+                    <TextBlock x:Name="StatusText" Text="Ready" VerticalAlignment="Center" />
+                    <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+                        <TextBlock Text="Find:" Margin="12,0,6,0" VerticalAlignment="Center" />
+                        <TextBox x:Name="SearchTextBox" Width="220" Height="22" VerticalAlignment="Center" KeyDown="SearchTextBox_KeyDown" />
+                        <Button x:Name="FindButton" Content="Find" Margin="6,0,0,0" Padding="10,2" Click="FindButton_Click" />
+                    </StackPanel>
+                </DockPanel>
+            </StatusBarItem>
         </StatusBar>
     </Grid>
 </Window>
