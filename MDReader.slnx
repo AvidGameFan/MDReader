@@ -1,3 +1,4 @@
 <Solution>
   <Project Path="MDReader.App/MDReader.App.csproj" />
+  <Project Path="MDReader.Tests/MDReader.Tests.csproj" />
 </Solution>

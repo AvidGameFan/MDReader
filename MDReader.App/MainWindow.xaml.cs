@@ -36,6 +36,8 @@ public partial class MainWindow : Window
     private FileSystemWatcher? _fileWatcher;
     private DispatcherTimer? _reloadTimer;
     private string? _pendingReloadPath;
+    private readonly SearchState _searchState = new();
+    private readonly AppSettings _settings = AppSettings.Load();
 
     public MainWindow()
         : this(null)
@@ -57,6 +59,7 @@ public partial class MainWindow : Window
         ApplyZoom();
         LiveReloadMenuItem.IsChecked = _liveReloadEnabled;
         TocMenuItem.IsChecked = _showToc;
+        HardLineBreaksMenuItem.IsChecked = _settings.SoftLineBreaksAsHard;
 
         if (!string.IsNullOrWhiteSpace(_initialFilePath))
         {
@@ -105,7 +108,12 @@ public partial class MainWindow : Window
 
     private void RenderMarkdown(string markdown)
     {
-        var pipeline = new MarkdownPipelineBuilder().UseAdvancedExtensions().Build();
+        var pipelineBuilder = new MarkdownPipelineBuilder().UseAdvancedExtensions();
+        if (_settings.SoftLineBreaksAsHard)
+        {
+            pipelineBuilder = pipelineBuilder.UseSoftlineBreakAsHardlineBreak();
+        }
+        var pipeline = pipelineBuilder.Build();
         var htmlBody = Markdown.ToHtml(markdown, pipeline);
         var themeStyles = _isDarkTheme
             ? "body { background: #1e1e1e; color: #e6e6e6; } a { color: #4ea1ff; } code, pre { background: #2d2d2d; }"
@@ -278,6 +286,21 @@ public partial class MainWindow : Window
         }
     }
 
+    private void HardLineBreaksMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        _settings.SoftLineBreaksAsHard = HardLineBreaksMenuItem.IsChecked;
+        _settings.Save();
+
+        if (!string.IsNullOrWhiteSpace(_currentMarkdown))
+        {
+            RenderMarkdown(_currentMarkdown);
+        }
+        else
+        {
+            ShowWelcomePage();
+        }
+    }
+
     private void LiveReloadMenuItem_Click(object sender, RoutedEventArgs e)
     {
         _liveReloadEnabled = LiveReloadMenuItem.IsChecked;
@@ -339,8 +362,26 @@ public partial class MainWindow : Window
             return;
         }
 
-        var script = $"window.find({JsonSerializer.Serialize(query)})";
-        await MarkdownView.CoreWebView2.ExecuteScriptAsync(script);
+        var outcome = await _searchState.FindNextAsync(query, wrap => FindInWebViewAsync(query, wrap));
+        switch (outcome)
+        {
+            case SearchOutcome.Found:
+                SetStatus($"Found: {query}");
+                break;
+            case SearchOutcome.WrappedFound:
+                SetStatus($"Wrapped to top: {query}");
+                break;
+            case SearchOutcome.NoMatch:
+                SetStatus($"No matches for: {query}");
+                break;
+        }
+    }
+
+    private async Task<bool> FindInWebViewAsync(string query, bool wrap)
+    {
+        var script = $"window.find({JsonSerializer.Serialize(query)}, false, false, {wrap.ToString().ToLowerInvariant()}, false, false, false)";
+        var result = await MarkdownView.CoreWebView2.ExecuteScriptAsync(script);
+        return bool.TryParse(result, out var found) && found;
     }
 
     private void ZoomInMenuItem_Click(object sender, RoutedEventArgs e)
