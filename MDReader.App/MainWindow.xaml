@@ -7,6 +7,7 @@
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         mc:Ignorable="d"
         Title="MDReader" Height="700" Width="1000"
+        Icon="Assets/MDReader.ico"
         AllowDrop="True"
         DragOver="Window_DragOver"
         Drop="Window_Drop"
@@ -23,10 +24,14 @@
                 <MenuItem Header="_Open..." Click="OpenMenuItem_Click" />
                 <MenuItem Header="Open _Recent" x:Name="RecentFilesMenu" SubmenuOpened="RecentFilesMenu_SubmenuOpened" />
                 <Separator />
+                <MenuItem Header="_Save" Click="SaveMenuItem_Click" InputGestureText="Ctrl+S" />
+                <MenuItem Header="Save _As..." Click="SaveAsMenuItem_Click" />
+                <Separator />
                 <MenuItem Header="E_xit" Click="ExitMenuItem_Click" />
             </MenuItem>
             <MenuItem Header="_View">
                 <MenuItem Header="_Dark Mode" x:Name="DarkModeMenuItem" IsCheckable="True" Click="DarkModeMenuItem_Click" />
+                <MenuItem Header="_Edit Mode" x:Name="EditModeMenuItem" IsCheckable="True" Click="EditModeMenuItem_Click" />
                 <MenuItem Header="Hard _Line Breaks" x:Name="HardLineBreaksMenuItem" IsCheckable="True" Click="HardLineBreaksMenuItem_Click" />
                 <MenuItem Header="_Live Reload" x:Name="LiveReloadMenuItem" IsCheckable="True" Click="LiveReloadMenuItem_Click" />
                 <MenuItem Header="Toggle _TOC" x:Name="TocMenuItem" IsCheckable="True" Click="TocMenuItem_Click" />
@@ -40,7 +45,10 @@
         </Menu>
 
         <wv2:WebView2 x:Name="MarkdownView"
-                     Grid.Row="1" />
+                     Grid.Row="1"
+                     AllowDrop="True"
+                     DragOver="MarkdownView_DragOver"
+                     Drop="MarkdownView_Drop" />
 
         <StatusBar Grid.Row="2">
             <StatusBarItem HorizontalAlignment="Stretch">

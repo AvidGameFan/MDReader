@@ -38,6 +38,7 @@ public partial class MainWindow : Window
     private string? _pendingReloadPath;
     private readonly SearchState _searchState = new();
     private readonly AppSettings _settings = AppSettings.Load();
+    private bool _isEditMode;
 
     public MainWindow()
         : this(null)
@@ -60,6 +61,7 @@ public partial class MainWindow : Window
         LiveReloadMenuItem.IsChecked = _liveReloadEnabled;
         TocMenuItem.IsChecked = _showToc;
         HardLineBreaksMenuItem.IsChecked = _settings.SoftLineBreaksAsHard;
+        EditModeMenuItem.IsChecked = _isEditMode;
 
         if (!string.IsNullOrWhiteSpace(_initialFilePath))
         {
@@ -74,7 +76,13 @@ public partial class MainWindow : Window
     private async Task InitializeWebViewAsync()
     {
         await MarkdownView.EnsureCoreWebView2Async();
+        var assetsPath = Path.Combine(AppContext.BaseDirectory, "Assets");
+        MarkdownView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+            "app",
+            assetsPath,
+            CoreWebView2HostResourceAccessKind.Allow);
         MarkdownView.CoreWebView2.NavigationStarting += CoreWebView2_NavigationStarting;
+        MarkdownView.CoreWebView2.NewWindowRequested += CoreWebView2_NewWindowRequested;
     }
 
     private async Task LoadMarkdownFileAsync(string filePath)
@@ -106,8 +114,19 @@ public partial class MainWindow : Window
         }
     }
 
+    public Task LoadFileFromExternal(string filePath)
+    {
+        return LoadMarkdownFileAsync(filePath);
+    }
+
     private void RenderMarkdown(string markdown)
     {
+        if (_isEditMode)
+        {
+            RenderEditor(markdown);
+            return;
+        }
+
         var pipelineBuilder = new MarkdownPipelineBuilder().UseAdvancedExtensions();
         if (_settings.SoftLineBreaksAsHard)
         {
@@ -176,6 +195,109 @@ public partial class MainWindow : Window
         MarkdownView.NavigateToString(html);
     }
 
+        private void RenderEditor(string markdown)
+        {
+                var pipelineBuilder = new MarkdownPipelineBuilder().UseAdvancedExtensions();
+                if (_settings.SoftLineBreaksAsHard)
+                {
+                        pipelineBuilder = pipelineBuilder.UseSoftlineBreakAsHardlineBreak();
+                }
+                var pipeline = pipelineBuilder.Build();
+                var htmlBody = Markdown.ToHtml(markdown, pipeline);
+                var themeStyles = _isDarkTheme
+                        ? "body { background: #1e1e1e; color: #e6e6e6; } a { color: #4ea1ff; } code, pre { background: #2d2d2d; }"
+                        : "body { background: #ffffff; color: #1b1b1b; } a { color: #0067c0; } code, pre { background: #f5f5f5; }";
+
+                var softLineBreaksAsHard = _settings.SoftLineBreaksAsHard ? "true" : "false";
+                var script = @"<script>
+(function() {
+    var editor = document.getElementById('editor');
+    if (editor) {
+        editor.addEventListener('click', function(e) {
+            var target = e.target;
+            if (target && target.tagName === 'INPUT' && target.type === 'checkbox') {
+                e.preventDefault();
+                target.checked = !target.checked;
+            }
+        });
+    }
+
+    window.mdreader_insertCheckbox = function() {
+        document.execCommand('insertHTML', false, '<input type=""checkbox"" /> ');
+    };
+
+    window.mdreader_getMarkdown = function() {
+        if (!editor) {
+            return '';
+        }
+        if (!window.TurndownService) {
+            return '__TURNDOWN_MISSING__';
+        }
+
+        var turndownService = new TurndownService({ headingStyle: 'atx', bulletListMarker: '-', codeBlockStyle: 'fenced' });
+        turndownService.addRule('checkbox', {
+            filter: function(node) {
+                return node.nodeName === 'INPUT' && node.type === 'checkbox';
+            },
+            replacement: function(content, node) {
+                return (node.checked ? '[x]' : '[ ]');
+            }
+        });
+        if (__HARDLINEBREAKS__) {
+            turndownService.addRule('linebreak', {
+                filter: 'br',
+                replacement: function() {
+                    return '\n';
+                }
+            });
+        }
+
+        var markdown = turndownService.turndown(editor.innerHTML);
+        markdown = markdown.replace(/^\-\s{2,}/gm, '- ');
+        return markdown;
+    };
+})();
+</script>";
+                script = script.Replace("__HARDLINEBREAKS__", softLineBreaksAsHard);
+
+                var html = $@"<!doctype html>
+<html>
+<head>
+    <meta charset=""utf-8"" />
+    <meta name=""viewport"" content=""width=device-width, initial-scale=1"" />
+    <style>
+        body {{ font-family: 'Segoe UI', Arial, sans-serif; margin: 0; line-height: 1.6; }}
+        #toolbar {{ padding: 8px 12px; border-bottom: 1px solid #ccc; position: sticky; top: 0; background: inherit; }}
+        #toolbar button {{ margin-right: 6px; }}
+        #editor {{ padding: 16px 24px; outline: none; min-height: calc(100vh - 60px); }}
+        code, pre {{ font-family: Consolas, 'Cascadia Code', monospace; }}
+        pre {{ padding: 12px; overflow-x: auto; }}
+        img {{ max-width: 100%; }}
+        {themeStyles}
+    </style>
+</head>
+<body>
+    <div id=""toolbar"">
+        <button onclick=""document.execCommand('bold')"">B</button>
+        <button onclick=""document.execCommand('italic')"">I</button>
+        <button onclick=""document.execCommand('insertUnorderedList')"">• List</button>
+        <button onclick=""document.execCommand('insertOrderedList')"">1. List</button>
+        <button onclick=""document.execCommand('formatBlock', false, 'h1')"">H1</button>
+        <button onclick=""document.execCommand('formatBlock', false, 'h2')"">H2</button>
+        <button onclick=""document.execCommand('formatBlock', false, 'h3')"">H3</button>
+        <button onclick=""var url=prompt('Link URL'); if(url) document.execCommand('createLink', false, url);"">Link</button>
+        <button onclick=""document.execCommand('formatBlock', false, 'pre')"">Code</button>
+        <button onclick=""window.mdreader_insertCheckbox && window.mdreader_insertCheckbox()"">☐ Task</button>
+    </div>
+    <div id=""editor"" contenteditable=""true"">{htmlBody}</div>
+    <script src=""https://app/turndown.js""></script>
+    {script}
+</body>
+</html>";
+
+                MarkdownView.NavigateToString(html);
+        }
+
     private void ShowWelcomePage()
     {
         var themeStyles = _isDarkTheme
@@ -210,25 +332,75 @@ public partial class MainWindow : Window
 
     private void CoreWebView2_NavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
     {
-        if (Uri.TryCreate(e.Uri, UriKind.Absolute, out var uri))
+        if (TryHandleExternalNavigation(e.Uri))
         {
-            if (uri.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase) ||
-                uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase))
-            {
-                e.Cancel = true;
-                try
-                {
-                    Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
-                }
-                catch
-                {
-                    SetStatus($"Unable to open link: {uri.AbsoluteUri}");
-                }
-            }
+            e.Cancel = true;
         }
     }
 
+    private void CoreWebView2_NewWindowRequested(object? sender, CoreWebView2NewWindowRequestedEventArgs e)
+    {
+        if (TryHandleExternalNavigation(e.Uri))
+        {
+            e.Handled = true;
+        }
+    }
+
+    private bool TryHandleExternalNavigation(string? uriText)
+    {
+        if (!Uri.TryCreate(uriText, UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+
+        if (uri.IsFile)
+        {
+            var filePath = uri.LocalPath;
+            if (File.Exists(filePath))
+            {
+                _ = LoadMarkdownFileAsync(filePath);
+                return true;
+            }
+        }
+
+        if (uri.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase) ||
+            uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+            }
+            catch
+            {
+                SetStatus($"Unable to open link: {uri.AbsoluteUri}");
+            }
+            return true;
+        }
+
+        return false;
+    }
+
     private void Window_DragOver(object sender, DragEventArgs e)
+    {
+        HandleFileDragOver(e);
+    }
+
+    private async void Window_Drop(object sender, DragEventArgs e)
+    {
+        await HandleFileDropAsync(e);
+    }
+
+    private void MarkdownView_DragOver(object sender, DragEventArgs e)
+    {
+        HandleFileDragOver(e);
+    }
+
+    private async void MarkdownView_Drop(object sender, DragEventArgs e)
+    {
+        await HandleFileDropAsync(e);
+    }
+
+    private void HandleFileDragOver(DragEventArgs e)
     {
         if (e.Data.GetDataPresent(DataFormats.FileDrop))
         {
@@ -241,7 +413,7 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
-    private async void Window_Drop(object sender, DragEventArgs e)
+    private async Task HandleFileDropAsync(DragEventArgs e)
     {
         if (e.Data.GetDataPresent(DataFormats.FileDrop))
         {
@@ -318,6 +490,19 @@ public partial class MainWindow : Window
     private void TocMenuItem_Click(object sender, RoutedEventArgs e)
     {
         _showToc = TocMenuItem.IsChecked;
+        if (!string.IsNullOrWhiteSpace(_currentMarkdown))
+        {
+            RenderMarkdown(_currentMarkdown);
+        }
+        else
+        {
+            ShowWelcomePage();
+        }
+    }
+
+    private void EditModeMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        _isEditMode = EditModeMenuItem.IsChecked;
         if (!string.IsNullOrWhiteSpace(_currentMarkdown))
         {
             RenderMarkdown(_currentMarkdown);
@@ -566,6 +751,68 @@ public partial class MainWindow : Window
             SearchTextBox.SelectAll();
             e.Handled = true;
         }
+        else if (e.Key == Key.S && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            _ = SaveCurrentAsync();
+            e.Handled = true;
+        }
+    }
+
+    private async void SaveMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        await SaveCurrentAsync();
+    }
+
+    private async void SaveAsMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        await SaveCurrentAsync(forceSaveAs: true);
+    }
+
+    private async Task SaveCurrentAsync(bool forceSaveAs = false)
+    {
+        if (!_isEditMode)
+        {
+            SetStatus("Switch to Edit Mode to save changes.");
+            return;
+        }
+
+        if (MarkdownView.CoreWebView2 == null)
+        {
+            return;
+        }
+
+        var filePath = _currentFilePath;
+        if (string.IsNullOrWhiteSpace(filePath) || forceSaveAs)
+        {
+            var dialog = new SaveFileDialog
+            {
+                Title = "Save Markdown File",
+                Filter = "Markdown Files (*.md)|*.md|All Files (*.*)|*.*",
+                FileName = filePath != null ? Path.GetFileName(filePath) : "document.md"
+            };
+
+            if (dialog.ShowDialog(this) != true)
+            {
+                return;
+            }
+
+            filePath = dialog.FileName;
+        }
+
+        var markdownJson = await MarkdownView.CoreWebView2.ExecuteScriptAsync("window.mdreader_getMarkdown && window.mdreader_getMarkdown()") ?? "''";
+        var markdown = JsonSerializer.Deserialize<string>(markdownJson) ?? string.Empty;
+        if (markdown == "__TURNDOWN_MISSING__")
+        {
+            MessageBox.Show(this, "Turndown failed to load. Please rebuild and try again.", "MDReader", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        await File.WriteAllTextAsync(filePath, markdown);
+        _currentFilePath = filePath;
+        _currentMarkdown = markdown;
+        Title = $"MDReader — {Path.GetFileName(filePath)}";
+        SetStatus($"Saved: {filePath}");
+        AddRecentFile(filePath);
     }
 
     private void SetStatus(string text)
