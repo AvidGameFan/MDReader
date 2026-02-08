@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" Name="MDReader" Language="1033" Version="1.0.0.0" Manufacturer="MDReader" UpgradeCode="PUT-GUID-HERE">
+    <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MediaTemplate />
+
+    <Feature Id="ProductFeature" Title="MDReader" Level="1">
+      <ComponentGroupRef Id="ProductComponents" />
+    </Feature>
+  </Product>
+
+  <Fragment>
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="INSTALLFOLDER" Name="MDReader" />
+      </Directory>
+    </Directory>
+  </Fragment>
+
+  <Fragment>
+    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+      <Component Id="MDReaderApp.exe" Guid="*">
+        <File Id="MDReaderApp.exe" Source="$(var.SourceDir)\MDReader.App.exe" KeyPath="yes" />
+      </Component>
+      <!-- Add other files as needed, e.g., DLLs, assets -->
+      <Component Id="Assets" Guid="*">
+        <File Id="Turndown.js" Source="$(var.SourceDir)\Assets\turndown.js" />
+        <File Id="MDReader.ico" Source="$(var.SourceDir)\Assets\MDReader.ico" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>

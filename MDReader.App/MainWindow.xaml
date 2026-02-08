@@ -26,6 +26,7 @@
                 <Separator />
                 <MenuItem Header="_Save" Click="SaveMenuItem_Click" InputGestureText="Ctrl+S" />
                 <MenuItem Header="Save _As..." Click="SaveAsMenuItem_Click" />
+                <MenuItem Header="_Print..." Click="PrintMenuItem_Click" InputGestureText="Ctrl+P" />
                 <Separator />
                 <MenuItem Header="E_xit" Click="ExitMenuItem_Click" />
             </MenuItem>

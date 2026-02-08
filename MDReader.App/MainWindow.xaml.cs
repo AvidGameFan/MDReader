@@ -756,6 +756,11 @@ public partial class MainWindow : Window
             _ = SaveCurrentAsync();
             e.Handled = true;
         }
+        else if (e.Key == Key.P && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            _ = PrintCurrentAsync();
+            e.Handled = true;
+        }
     }
 
     private async void SaveMenuItem_Click(object sender, RoutedEventArgs e)
@@ -766,6 +771,20 @@ public partial class MainWindow : Window
     private async void SaveAsMenuItem_Click(object sender, RoutedEventArgs e)
     {
         await SaveCurrentAsync(forceSaveAs: true);
+    }
+
+    private async void PrintMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        await PrintCurrentAsync();
+    }
+
+    private async Task PrintCurrentAsync()
+    {
+        var (success, error) = await PrintHelper.TryPrintAsync(MarkdownView.CoreWebView2);
+        if (!success && !string.IsNullOrWhiteSpace(error))
+        {
+            SetStatus(error);
+        }
     }
 
     private async Task SaveCurrentAsync(bool forceSaveAs = false)
