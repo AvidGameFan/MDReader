@@ -1,9 +1,11 @@
 ﻿using System;
-using System.Collections.Generic;
+//using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
-using System.Threading.Tasks;
+//using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -363,14 +365,11 @@ public partial class MainWindow : Window
             }
         }
 
+
         if (uri.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase) ||
             uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase))
         {
-            try
-            {
-                Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
-            }
-            catch
+            if (!TryOpenInDefaultBrowser(uri))
             {
                 SetStatus($"Unable to open link: {uri.AbsoluteUri}");
             }
@@ -379,6 +378,69 @@ public partial class MainWindow : Window
 
         return false;
     }
+
+
+
+    private bool TryOpenInDefaultBrowser(Uri uri)
+    {
+        try
+        {
+            var browserExe = GetAssociatedExecutableForProtocol("https");
+            if (string.IsNullOrWhiteSpace(browserExe))
+            {
+                return false;
+            }
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = browserExe,
+                UseShellExecute = false
+            };
+            psi.ArgumentList.Add(uri.AbsoluteUri); // no command-line concatenation
+
+            Process.Start(psi);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static string? GetAssociatedExecutableForProtocol(string protocol)
+    {
+        uint length = 0;
+        _ = AssocQueryString(AssocF.None, AssocStr.Executable, protocol, null, null, ref length);
+        if (length == 0)
+        {
+            return null;
+        }
+
+        var sb = new StringBuilder((int)length);
+        var hr = AssocQueryString(AssocF.None, AssocStr.Executable, protocol, null, sb, ref length);
+        return hr == 0 ? sb.ToString() : null;
+    }
+
+    [DllImport("Shlwapi.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern uint AssocQueryString(
+        AssocF flags,
+        AssocStr str,
+        string pszAssoc,
+        string? pszExtra,
+        StringBuilder? pszOut,
+        ref uint pcchOut);
+
+    private enum AssocF : uint
+    {
+        None = 0
+    }
+
+    private enum AssocStr
+    {
+        Executable = 2
+    }
+
+    
 
     private void Window_DragOver(object sender, DragEventArgs e)
     {
