@@ -129,7 +129,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var pipelineBuilder = new MarkdownPipelineBuilder().UseAdvancedExtensions();
+        var pipelineBuilder = new MarkdownPipelineBuilder().UseAdvancedExtensions().UseTaskLists();
         if (_settings.SoftLineBreaksAsHard)
         {
             pipelineBuilder = pipelineBuilder.UseSoftlineBreakAsHardlineBreak();
@@ -168,6 +168,76 @@ public partial class MainWindow : Window
     toc.appendChild(list);
 })();
 </script>";
+        var taskScript = @"
+<script>
+(function() {
+    var root = document.body;
+    if (!root) {
+        return;
+    }
+
+    var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+    var textNodes = [];
+    var current;
+    while ((current = walker.nextNode())) {
+        if (!current.nodeValue || !/\[(?: |x|X)\]/.test(current.nodeValue)) {
+            continue;
+        }
+
+        var parent = current.parentElement;
+        if (!parent) {
+            continue;
+        }
+
+        var tag = parent.tagName;
+        if (tag === 'CODE' || tag === 'PRE' || tag === 'SCRIPT' || tag === 'STYLE') {
+            continue;
+        }
+
+        textNodes.push(current);
+    }
+
+    textNodes.forEach(function(textNode) {
+        var text = textNode.nodeValue || '';
+        var regex = /\[( |x|X)\]/g;
+        var lastIndex = 0;
+        var match;
+        var fragment = document.createDocumentFragment();
+        var changed = false;
+
+        while ((match = regex.exec(text)) !== null) {
+            changed = true;
+            var before = text.substring(lastIndex, match.index);
+            if (before.length > 0) {
+                fragment.appendChild(document.createTextNode(before));
+            }
+
+            var checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = match[1].toLowerCase() === 'x';
+            checkbox.disabled = true;
+            fragment.appendChild(checkbox);
+
+            lastIndex = match.index + match[0].length;
+        }
+
+        if (!changed) {
+            return;
+        }
+
+        var after = text.substring(lastIndex);
+        if (after.length > 0) {
+            fragment.appendChild(document.createTextNode(after));
+        }
+
+        textNode.parentNode.replaceChild(fragment, textNode);
+    });
+
+    root.querySelectorAll('input[type=checkbox]').forEach(function(cb) {
+        cb.disabled = true;
+    });
+})();
+</script>";
 
         var html = $@"<!doctype html>
 <html>
@@ -177,6 +247,7 @@ public partial class MainWindow : Window
   <style>
     body {{ font-family: 'Segoe UI', Arial, sans-serif; margin: 24px; line-height: 1.6; }}
     code, pre {{ font-family: Consolas, 'Cascadia Code', monospace; }}
+    input[type='checkbox'] {{ pointer-events: none; }}
     pre {{ padding: 12px; overflow-x: auto; }}
     img {{ max-width: 100%; }}
         #toc {{ padding: 12px 16px; margin-bottom: 16px; border: 1px solid #ddd; border-radius: 6px; }}
@@ -191,6 +262,7 @@ public partial class MainWindow : Window
 {tocHtml}
 {htmlBody}
 {tocScript}
+{taskScript}
 </body>
 </html>";
 
@@ -199,7 +271,7 @@ public partial class MainWindow : Window
 
         private void RenderEditor(string markdown)
         {
-                var pipelineBuilder = new MarkdownPipelineBuilder().UseAdvancedExtensions();
+                var pipelineBuilder = new MarkdownPipelineBuilder().UseAdvancedExtensions().UseTaskLists();
                 if (_settings.SoftLineBreaksAsHard)
                 {
                         pipelineBuilder = pipelineBuilder.UseSoftlineBreakAsHardlineBreak();
@@ -214,14 +286,99 @@ public partial class MainWindow : Window
                 var script = @"<script>
 (function() {
     var editor = document.getElementById('editor');
-    if (editor) {
-        editor.addEventListener('click', function(e) {
-            var target = e.target;
-            if (target && target.tagName === 'INPUT' && target.type === 'checkbox') {
-                e.preventDefault();
-                target.checked = !target.checked;
+
+    var upgradeTaskTokens = function(root) {
+        if (!root) {
+            return;
+        }
+
+        var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+        var textNodes = [];
+        var current;
+        while ((current = walker.nextNode())) {
+            if (!current.nodeValue || !/\[(?: |x|X)\]/.test(current.nodeValue)) {
+                continue;
             }
+
+            var parent = current.parentElement;
+            if (!parent) {
+                continue;
+            }
+
+            var tag = parent.tagName;
+            if (tag === 'CODE' || tag === 'PRE' || tag === 'SCRIPT' || tag === 'STYLE') {
+                continue;
+            }
+
+            textNodes.push(current);
+        }
+
+        textNodes.forEach(function(textNode) {
+            var text = textNode.nodeValue || '';
+            var regex = /\[( |x|X)\]/g;
+            var lastIndex = 0;
+            var match;
+            var fragment = document.createDocumentFragment();
+            var changed = false;
+
+            while ((match = regex.exec(text)) !== null) {
+                changed = true;
+                var before = text.substring(lastIndex, match.index);
+                if (before.length > 0) {
+                    fragment.appendChild(document.createTextNode(before));
+                }
+
+                var checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.checked = match[1].toLowerCase() === 'x';
+                fragment.appendChild(checkbox);
+
+                lastIndex = match.index + match[0].length;
+            }
+
+            if (!changed) {
+                return;
+            }
+
+            var after = text.substring(lastIndex);
+            if (after.length > 0) {
+                fragment.appendChild(document.createTextNode(after));
+            }
+
+            textNode.parentNode.replaceChild(fragment, textNode);
         });
+    };
+
+    var normalizeCheckboxes = function(root) {
+        if (!root) {
+            return;
+        }
+
+        root.querySelectorAll('input[type=checkbox]').forEach(function(cb) {
+            cb.disabled = false;
+            cb.removeAttribute('disabled');
+            cb.setAttribute('contenteditable', 'false');
+        });
+    };
+
+    if (editor) {
+        upgradeTaskTokens(editor);
+        normalizeCheckboxes(editor);
+
+        var syncCheckbox = function(e) {
+            var target = e.target;
+            if (!(target instanceof HTMLInputElement) || target.type !== 'checkbox') {
+                return;
+            }
+
+            if (target.checked) {
+                target.setAttribute('checked', 'checked');
+            } else {
+                target.removeAttribute('checked');
+            }
+        };
+
+        editor.addEventListener('change', syncCheckbox);
     }
 
     window.mdreader_insertCheckbox = function() {
@@ -242,7 +399,10 @@ public partial class MainWindow : Window
                 return node.nodeName === 'INPUT' && node.type === 'checkbox';
             },
             replacement: function(content, node) {
-                return (node.checked ? '[x]' : '[ ]');
+                var checked = typeof node.checked === 'boolean'
+                    ? node.checked
+                    : (typeof node.getAttribute === 'function' && node.getAttribute('checked') !== null);
+                return (checked ? '[x]' : '[ ]');
             }
         });
         if (__HARDLINEBREAKS__) {
@@ -254,7 +414,15 @@ public partial class MainWindow : Window
             });
         }
 
-        var markdown = turndownService.turndown(editor.innerHTML);
+        editor.querySelectorAll('input[type=checkbox]').forEach(function(cb) {
+            if (cb.checked) {
+                cb.setAttribute('checked', 'checked');
+            } else {
+                cb.removeAttribute('checked');
+            }
+        });
+
+        var markdown = turndownService.turndown(editor);
         markdown = markdown.replace(/^\-\s{2,}/gm, '- ');
         return markdown;
     };
