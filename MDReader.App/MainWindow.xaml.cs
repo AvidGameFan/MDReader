@@ -2,6 +2,8 @@
 //using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.ComponentModel;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
@@ -52,6 +54,15 @@ public partial class MainWindow : Window
         _initialFilePath = initialFilePath;
         InitializeComponent();
         Loaded += MainWindow_Loaded;
+        Closing += MainWindow_Closing;
+    }
+
+    private async void MainWindow_Closing(object? sender, CancelEventArgs e)
+    {
+        if (!await EnsurePendingEditChangesHandledAsync("exiting"))
+        {
+            e.Cancel = true;
+        }
     }
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
@@ -730,9 +741,19 @@ public partial class MainWindow : Window
         }
     }
 
-    private void EditModeMenuItem_Click(object sender, RoutedEventArgs e)
+    private async void EditModeMenuItem_Click(object sender, RoutedEventArgs e)
     {
-        _isEditMode = EditModeMenuItem.IsChecked;
+        var switchingToEdit = EditModeMenuItem.IsChecked;
+        if (!switchingToEdit && _isEditMode)
+        {
+            if (!await EnsurePendingEditChangesHandledAsync("switching to view mode"))
+            {
+                EditModeMenuItem.IsChecked = true;
+                return;
+            }
+        }
+
+        _isEditMode = switchingToEdit;
         if (!string.IsNullOrWhiteSpace(_currentMarkdown))
         {
             RenderMarkdown(_currentMarkdown);
@@ -991,6 +1012,56 @@ public partial class MainWindow : Window
             _ = PrintCurrentAsync();
             e.Handled = true;
         }
+        else if (!_isEditMode && Keyboard.Modifiers == ModifierKeys.None && (e.Key == Key.Left || e.Key == Key.Right))
+        {
+            if (Keyboard.FocusedElement is TextBox)
+            {
+                return;
+            }
+
+            _ = NavigateSiblingMarkdownAsync(e.Key == Key.Right ? 1 : -1);
+            e.Handled = true;
+        }
+    }
+
+    private async Task NavigateSiblingMarkdownAsync(int direction)
+    {
+        if (string.IsNullOrWhiteSpace(_currentFilePath))
+        {
+            SetStatus("Open a markdown file first.");
+            return;
+        }
+
+        var directory = Path.GetDirectoryName(_currentFilePath);
+        if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
+        {
+            return;
+        }
+
+        var files = Directory
+            .EnumerateFiles(directory, "*.md", SearchOption.TopDirectoryOnly)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (files.Count == 0)
+        {
+            SetStatus("No .md files found in folder.");
+            return;
+        }
+
+        var currentIndex = files.FindIndex(path => string.Equals(path, _currentFilePath, StringComparison.OrdinalIgnoreCase));
+        if (currentIndex < 0)
+        {
+            currentIndex = 0;
+        }
+
+        var nextIndex = (currentIndex + direction + files.Count) % files.Count;
+        if (nextIndex == currentIndex)
+        {
+            return;
+        }
+
+        await LoadMarkdownFileAsync(files[nextIndex]);
     }
 
     private async void SaveMenuItem_Click(object sender, RoutedEventArgs e)
@@ -1017,17 +1088,17 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task SaveCurrentAsync(bool forceSaveAs = false)
+    private async Task<bool> SaveCurrentAsync(bool forceSaveAs = false)
     {
         if (!_isEditMode)
         {
             SetStatus("Switch to Edit Mode to save changes.");
-            return;
+            return false;
         }
 
         if (MarkdownView.CoreWebView2 == null)
         {
-            return;
+            return false;
         }
 
         var filePath = _currentFilePath;
@@ -1042,18 +1113,16 @@ public partial class MainWindow : Window
 
             if (dialog.ShowDialog(this) != true)
             {
-                return;
+                return false;
             }
 
             filePath = dialog.FileName;
         }
 
-        var markdownJson = await MarkdownView.CoreWebView2.ExecuteScriptAsync("window.mdreader_getMarkdown && window.mdreader_getMarkdown()") ?? "''";
-        var markdown = JsonSerializer.Deserialize<string>(markdownJson) ?? string.Empty;
-        if (markdown == "__TURNDOWN_MISSING__")
+        var markdown = await TryGetEditorMarkdownAsync(showTurndownError: true);
+        if (markdown == null)
         {
-            MessageBox.Show(this, "Turndown failed to load. Please rebuild and try again.", "MDReader", MessageBoxButton.OK, MessageBoxImage.Error);
-            return;
+            return false;
         }
 
         await File.WriteAllTextAsync(filePath, markdown);
@@ -1062,6 +1131,66 @@ public partial class MainWindow : Window
         Title = $"MDReader — {Path.GetFileName(filePath)}";
         SetStatus($"Saved: {filePath}");
         AddRecentFile(filePath);
+        return true;
+    }
+
+    private async Task<bool> EnsurePendingEditChangesHandledAsync(string actionText)
+    {
+        if (!_isEditMode || MarkdownView.CoreWebView2 == null)
+        {
+            return true;
+        }
+
+        var editorMarkdown = await TryGetEditorMarkdownAsync(showTurndownError: true);
+        if (editorMarkdown == null)
+        {
+            return false;
+        }
+
+        if (string.Equals(editorMarkdown, _currentMarkdown ?? string.Empty, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        var result = MessageBox.Show(
+            this,
+            $"You have unsaved changes. Save before {actionText}?",
+            "MDReader",
+            MessageBoxButton.YesNoCancel,
+            MessageBoxImage.Warning);
+
+        if (result == MessageBoxResult.Cancel)
+        {
+            return false;
+        }
+
+        if (result == MessageBoxResult.Yes)
+        {
+            return await SaveCurrentAsync();
+        }
+
+        return true;
+    }
+
+    private async Task<string?> TryGetEditorMarkdownAsync(bool showTurndownError)
+    {
+        if (MarkdownView.CoreWebView2 == null)
+        {
+            return null;
+        }
+
+        var markdownJson = await MarkdownView.CoreWebView2.ExecuteScriptAsync("window.mdreader_getMarkdown && window.mdreader_getMarkdown()") ?? "''";
+        var markdown = JsonSerializer.Deserialize<string>(markdownJson) ?? string.Empty;
+        if (markdown == "__TURNDOWN_MISSING__")
+        {
+            if (showTurndownError)
+            {
+                MessageBox.Show(this, "Turndown failed to load. Please rebuild and try again.", "MDReader", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            return null;
+        }
+
+        return markdown;
     }
 
     private void SetStatus(string text)
