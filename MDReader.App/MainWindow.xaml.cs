@@ -404,7 +404,7 @@ public partial class MainWindow : Window
             return '__TURNDOWN_MISSING__';
         }
 
-        var turndownService = new TurndownService({ headingStyle: 'atx', bulletListMarker: '-', codeBlockStyle: 'fenced' });
+        var turndownService = new TurndownService({ headingStyle: 'atx', bulletListMarker: '-', codeBlockStyle: 'fenced', hr: '---' });
         turndownService.addRule('checkbox', {
             filter: function(node) {
                 return node.nodeName === 'INPUT' && node.type === 'checkbox';
