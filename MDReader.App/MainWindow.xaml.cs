@@ -409,21 +409,51 @@ public partial class MainWindow : Window
             filter: function(node) {
                 return node.nodeName === 'INPUT' && node.type === 'checkbox';
             },
-            replacement: function(content, node) {
-                var checked = typeof node.checked === 'boolean'
-                    ? node.checked
-                    : (typeof node.getAttribute === 'function' && node.getAttribute('checked') !== null);
-                return (checked ? '[x]' : '[ ]');
-            }
-        });
-        if (__HARDLINEBREAKS__) {
-            turndownService.addRule('linebreak', {
-                filter: 'br',
-                replacement: function() {
-                    return '\n';
+                replacement: function(content, node) {
+                    var checked = typeof node.checked === 'boolean'
+                        ? node.checked
+                        : (typeof node.getAttribute === 'function' && node.getAttribute('checked') !== null);
+                    return (checked ? '[x]' : '[ ]');
                 }
             });
-        }
+            turndownService.addRule('table', {
+                filter: 'table',
+                replacement: function (content, node) {
+                    var rows = node.querySelectorAll('tr');
+                    if (rows.length === 0) return '';
+                    var markdownRows = [];
+                    var headerSeparatorNeeded = false;
+                    Array.prototype.forEach.call(rows, function (row) {
+                        var cells = row.querySelectorAll('th, td');
+                        var cellContents = [];
+                        Array.prototype.forEach.call(cells, function (cell) {
+                            var cellText = turndownService.turndown(cell).trim();
+                            cellText = cellText.replace(/\|/g, '\\|').replace(/\n+/g, ' ');
+                            cellContents.push(' ' + cellText + ' ');
+                        });
+                        markdownRows.push('|' + cellContents.join('|') + '|');
+                    });
+                    if (markdownRows.length > 1) {
+                        var firstRowHasTH = node.querySelector('tr th') !== null;
+                        headerSeparatorNeeded = firstRowHasTH || node.querySelector('thead') !== null;
+                    }
+                    if (headerSeparatorNeeded && markdownRows.length > 1) {
+                        var colCount = markdownRows[0].split('|').filter(function (c) { return c.trim() !== ''; }).length;
+                        var sepParts = [];
+                        for (var i = 0; i < colCount; i++) { sepParts.push(' --- '); }
+                        markdownRows.splice(1, 0, '|' + sepParts.join('|') + '|');
+                    }
+                    return '\n\n' + markdownRows.join('\n') + '\n\n';
+                }
+            });
+            if (__HARDLINEBREAKS__) {
+                turndownService.addRule('linebreak', {
+                    filter: 'br',
+                    replacement: function() {
+                        return '\n';
+                    }
+                });
+            }
 
         editor.querySelectorAll('input[type=checkbox]').forEach(function(cb) {
             if (cb.checked) {
