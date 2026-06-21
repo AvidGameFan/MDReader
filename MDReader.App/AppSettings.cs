@@ -7,6 +7,7 @@ namespace MDReader.App;
 public sealed class AppSettings
 {
     public bool SoftLineBreaksAsHard { get; set; }
+    public bool IgnoreEditRoundTripWarning { get; set; }
 
     private static string SettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),

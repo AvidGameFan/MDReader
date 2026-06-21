@@ -34,6 +34,7 @@
                 <MenuItem Header="_Dark Mode" x:Name="DarkModeMenuItem" IsCheckable="True" Click="DarkModeMenuItem_Click" />
                 <MenuItem Header="_Edit Mode" x:Name="EditModeMenuItem" IsCheckable="True" Click="EditModeMenuItem_Click" />
                 <MenuItem Header="Hard _Line Breaks" x:Name="HardLineBreaksMenuItem" IsCheckable="True" Click="HardLineBreaksMenuItem_Click" />
+                <MenuItem Header="Ignore Edit _Round-Trip Warning" x:Name="IgnoreEditRoundTripWarningMenuItem" IsCheckable="True" Click="IgnoreEditRoundTripWarningMenuItem_Click" />
                 <MenuItem Header="_Live Reload" x:Name="LiveReloadMenuItem" IsCheckable="True" Click="LiveReloadMenuItem_Click" />
                 <MenuItem Header="Toggle _TOC" x:Name="TocMenuItem" IsCheckable="True" Click="TocMenuItem_Click" />
                 <Separator />

@@ -43,6 +43,7 @@ public partial class MainWindow : Window
     private readonly SearchState _searchState = new();
     private readonly AppSettings _settings = AppSettings.Load();
     private bool _isEditMode;
+    private bool _hasShownEditRoundTripWarning;
 
     public MainWindow()
         : this(null)
@@ -74,6 +75,7 @@ public partial class MainWindow : Window
         LiveReloadMenuItem.IsChecked = _liveReloadEnabled;
         TocMenuItem.IsChecked = _showToc;
         HardLineBreaksMenuItem.IsChecked = _settings.SoftLineBreaksAsHard;
+        IgnoreEditRoundTripWarningMenuItem.IsChecked = _settings.IgnoreEditRoundTripWarning;
         EditModeMenuItem.IsChecked = _isEditMode;
 
         if (!string.IsNullOrWhiteSpace(_initialFilePath))
@@ -113,6 +115,7 @@ public partial class MainWindow : Window
             var markdown = await File.ReadAllTextAsync(filePath);
             _currentMarkdown = markdown;
             _currentFilePath = filePath;
+            _hasShownEditRoundTripWarning = false;
             RenderMarkdown(markdown);
             Title = $"MDReader — {Path.GetFileName(filePath)}";
             SetStatus(filePath);
@@ -744,6 +747,12 @@ public partial class MainWindow : Window
         }
     }
 
+    private void IgnoreEditRoundTripWarningMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        _settings.IgnoreEditRoundTripWarning = IgnoreEditRoundTripWarningMenuItem.IsChecked;
+        _settings.Save();
+    }
+
     private void LiveReloadMenuItem_Click(object sender, RoutedEventArgs e)
     {
         _liveReloadEnabled = LiveReloadMenuItem.IsChecked;
@@ -787,6 +796,10 @@ public partial class MainWindow : Window
         if (!string.IsNullOrWhiteSpace(_currentMarkdown))
         {
             RenderMarkdown(_currentMarkdown);
+            if (switchingToEdit)
+            {
+                await WarnIfEditRoundTripChangesAsync();
+            }
         }
         else
         {
@@ -1158,10 +1171,83 @@ public partial class MainWindow : Window
         await File.WriteAllTextAsync(filePath, markdown);
         _currentFilePath = filePath;
         _currentMarkdown = markdown;
+        _hasShownEditRoundTripWarning = false;
         Title = $"MDReader — {Path.GetFileName(filePath)}";
         SetStatus($"Saved: {filePath}");
         AddRecentFile(filePath);
         return true;
+    }
+
+    private async Task WarnIfEditRoundTripChangesAsync()
+    {
+        if (_settings.IgnoreEditRoundTripWarning)
+        {
+            return;
+        }
+
+        if (_hasShownEditRoundTripWarning || !_isEditMode || MarkdownView.CoreWebView2 == null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrEmpty(_currentMarkdown))
+        {
+            return;
+        }
+
+        if (!await WaitForEditorBridgeAsync())
+        {
+            return;
+        }
+
+        var roundTripMarkdown = await TryGetEditorMarkdownAsync(showTurndownError: false);
+        if (roundTripMarkdown == null)
+        {
+            return;
+        }
+
+        if (string.Equals(roundTripMarkdown, _currentMarkdown, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _hasShownEditRoundTripWarning = true;
+        SetStatus("Warning: edit-mode save may change markdown formatting.");
+        MessageBox.Show(
+            this,
+            "This file does not round-trip exactly through Edit Mode.\n\n" +
+            "If you save from Edit Mode, formatting details (such as spacing, line breaks, or some markdown constructs) may change.",
+            "MDReader",
+            MessageBoxButton.OK,
+            MessageBoxImage.Warning);
+    }
+
+    private async Task<bool> WaitForEditorBridgeAsync()
+    {
+        if (MarkdownView.CoreWebView2 == null)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < 20; i++)
+        {
+            try
+            {
+                var readyJson = await MarkdownView.CoreWebView2.ExecuteScriptAsync("typeof window.mdreader_getMarkdown === 'function'");
+                if (bool.TryParse(readyJson, out var ready) && ready)
+                {
+                    return true;
+                }
+            }
+            catch
+            {
+                // Ignore transient script timing errors while navigation completes.
+            }
+
+            await Task.Delay(50);
+        }
+
+        return false;
     }
 
     private async Task<bool> EnsurePendingEditChangesHandledAsync(string actionText)

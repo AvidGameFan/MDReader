@@ -8,6 +8,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $RepositoryRoot = Split-Path -Parent $MyInvocation.MyCommand.Definition
+$VersionProps = Join-Path $RepositoryRoot 'Version.props'
 $RuntimePlatform = $Platform.ToLowerInvariant()
 $AppProject = Join-Path $RepositoryRoot 'MDReader.App\MDReader.App.csproj'
 $TestProject = Join-Path $RepositoryRoot 'MDReader.Tests\MDReader.Tests.csproj'
@@ -61,6 +62,22 @@ function Invoke-WixBuild($description, [string[]]$arguments) {
     }
 }
 
+function Get-RepositoryVersion() {
+    if (-not (Test-Path $VersionProps)) {
+        throw "Version file not found at $VersionProps"
+    }
+
+    [xml]$versionXml = Get-Content -Path $VersionProps
+    $versionText = $versionXml.Project.PropertyGroup.MDReaderVersion
+    if ([string]::IsNullOrWhiteSpace($versionText)) {
+        throw 'MDReaderVersion is missing in Version.props'
+    }
+
+    return $versionText.Trim()
+}
+
+$ProductVersion = Get-RepositoryVersion
+
 # Build app and test projects
 Invoke-DotNetCommand 'Publishing app project' @('publish', $AppProject, '-c', $Configuration, '-r', "win-$RuntimePlatform", '--self-contained', $SelfContained.ToString().ToLowerInvariant())
 Invoke-DotNetCommand 'Building test project' @('build', $TestProject, '-c', $Configuration)
@@ -75,6 +92,7 @@ Invoke-WixBuild 'Building MSI package with WiX' @(
     $wxsFile,
     "-dConfiguration=$Configuration",
     "-dPlatform=$Platform",
+    "-dProductVersion=$ProductVersion",
     "-dSourceDir=$(Join-Path $RepositoryRoot 'MDReader.App\bin' $Platform $Configuration 'net10.0-windows10.0.22621.0' "win-$RuntimePlatform" 'publish')"
 )
 
