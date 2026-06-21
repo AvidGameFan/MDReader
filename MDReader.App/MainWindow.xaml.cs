@@ -714,6 +714,29 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void NewMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (!await EnsurePendingEditChangesHandledAsync("creating a new file"))
+        {
+            return;
+        }
+
+        _fileWatcher?.Dispose();
+        _fileWatcher = null;
+        _pendingReloadPath = null;
+
+        _currentFilePath = null;
+        _currentMarkdown = string.Empty;
+        _hasShownEditRoundTripWarning = false;
+
+        _isEditMode = true;
+        EditModeMenuItem.IsChecked = true;
+
+        Title = "MDReader - Untitled";
+        SetStatus("New file (unsaved)");
+        RenderMarkdown(_currentMarkdown);
+    }
+
     private void ExitMenuItem_Click(object sender, RoutedEventArgs e)
     {
         Close();
@@ -1043,6 +1066,11 @@ public partial class MainWindow : Window
         {
             SearchTextBox.Focus();
             SearchTextBox.SelectAll();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.N && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            NewMenuItem_Click(sender, e);
             e.Handled = true;
         }
         else if (e.Key == Key.S && Keyboard.Modifiers == ModifierKeys.Control)

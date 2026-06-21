@@ -85,7 +85,7 @@ Testing - test
 - [x] Optional: live reload on file change
 - [x] Optional: search in document
 - [x] Optional: table of contents  
-    _\- [ ] Later: split view editor_
+- [ ] Later: split view editor_
 - [ ] Later: WYSIWYG editor in WebView2
 - [ ] Later: save + conflict handling
 - [x] Package with MSIX

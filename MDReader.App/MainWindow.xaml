@@ -21,6 +21,7 @@
 
         <Menu Grid.Row="0">
             <MenuItem Header="_File">
+                <MenuItem Header="_New" Click="NewMenuItem_Click" InputGestureText="Ctrl+N" />
                 <MenuItem Header="_Open..." Click="OpenMenuItem_Click" />
                 <MenuItem Header="Open _Recent" x:Name="RecentFilesMenu" SubmenuOpened="RecentFilesMenu_SubmenuOpened" />
                 <Separator />

@@ -1,6 +1,10 @@
 ﻿# MDReader
 Markdown reader and editor.
 
+The main uses are to:
+- Easily browse through multiple Markdown files in a formatted state
+- Create new Markdown files with a simple WYSIWYG editor
+
 ## Features
 - Open and view Markdown files
 - Edit Markdown with a live preview (WYSIWYG)
@@ -12,13 +16,16 @@ Markdown reader and editor.
 Download the latest release from Github
 Unzip the downloaded file and run `MDReader.app.exe` to start the application.
 
+[Zip for Windows x64](https://github.com/AvidGameFan/MDReader/blob/main/ZipOutput/MDReader-Release-win-x64.zip)
+[Zip for Windows ARM](https://github.com/AvidGameFan/MDReader/blob/main/ZipOutput/MDReader-Release-win-ARM64.zip)
+
 ## Notes
 
 In the conversion between Markdown and HTML (used for the editor screen), it will reformat your Markdown content. This may result in changes to the formatting 
 of your original Markdown file. If you want to preserve the original formatting, consider using a dedicated Markdown editor that supports this feature, and only 
-use this application for viewing.
+use this application for viewing.  Editing may work best with files created with this tool.
 
-This application is built using .NET 8 and Windows Presentation Foundation (WPF). It is designed to run on Windows 10 and later versions. If you encounter any 
+This application is built using .NET 10 and Windows Presentation Foundation (WPF). It is designed to run on Windows 10 and later versions. If you encounter any 
 issues or have suggestions for improvements, please feel free to open an issue on the GitHub repository.
 
 ## Dependencies
